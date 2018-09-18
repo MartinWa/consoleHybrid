@@ -1,17 +1,16 @@
-﻿using Clients;
-using IdentityModel.OidcClient;
-using Newtonsoft.Json.Linq;
-using Serilog;
-using System;
+﻿using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using IdentityModel.OidcClient;
+using Newtonsoft.Json;
+using Serilog;
 
-namespace ConsoleClientWithBrowser
+namespace ConsoleHybridWithPkce
 {
     public class Program
     {
         static OidcClient _oidcClient;
-        static HttpClient _apiClient = new HttpClient { BaseAddress = new Uri(Constants.SampleApi + "/identity") };
+        static HttpClient _apiClient = new HttpClient { BaseAddress = new Uri(Constants.Constants.SampleApi) };
 
         public static async Task Main()
         {
@@ -29,15 +28,16 @@ namespace ConsoleClientWithBrowser
         {
             // create a redirect URI using an available port on the loopback address.
             // requires the OP to allow random ports on 127.0.0.1 - otherwise set a static port
-            var browser = new SystemBrowser();
+            var browser = new SystemBrowser(63637);
             string redirectUri = string.Format($"http://127.0.0.1:{browser.Port}");
 
             var options = new OidcClientOptions
             {
-                Authority = Constants.Authority,
-                ClientId = "console.hybrid.pkce",
+                Authority = Constants.Constants.Authority,
+                ClientId = Constants.Constants.ClientId,
+                ClientSecret = Constants.Constants.ClientSecret,
                 RedirectUri = redirectUri,
-                Scope = "openid profile api1",
+                Scope = Constants.Constants.Scope,
                 FilterClaims = false,
                 Browser = browser
             };
@@ -50,11 +50,20 @@ namespace ConsoleClientWithBrowser
 
             options.LoggerFactory.AddSerilog(serilog);
 
-            _oidcClient = new OidcClient(options);
-            var result = await _oidcClient.LoginAsync(new LoginRequest());
+            try
+            {
+                _oidcClient = new OidcClient(options);
+                var result = await _oidcClient.LoginAsync(new LoginRequest());
 
-            ShowResult(result);
-            await NextSteps(result);
+                ShowResult(result);
+                await NextSteps(result);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+            Console.WriteLine("Press any key to close");
+            Console.ReadKey();
         }
 
         private static void ShowResult(LoginResult result)
@@ -73,7 +82,7 @@ namespace ConsoleClientWithBrowser
 
             Console.WriteLine($"\nidentity token: {result.IdentityToken}");
             Console.WriteLine($"access token:   {result.AccessToken}");
-            Console.WriteLine($"refresh token:  {result?.RefreshToken ?? "none"}");
+            Console.WriteLine($"refresh token:  {result.RefreshToken ?? "none"}");
         }
 
         private static async Task NextSteps(LoginResult result)
@@ -107,7 +116,7 @@ namespace ConsoleClientWithBrowser
 
                         Console.WriteLine("\n\n");
                         Console.WriteLine($"access token:   {result.AccessToken}");
-                        Console.WriteLine($"refresh token:  {result?.RefreshToken ?? "none"}");
+                        Console.WriteLine($"refresh token:  {result.RefreshToken ?? "none"}");
                     }
                 }
             }
@@ -116,17 +125,22 @@ namespace ConsoleClientWithBrowser
         private static async Task CallApi(string currentAccessToken)
         {
             _apiClient.SetBearerToken(currentAccessToken);
-            var response = await _apiClient.GetAsync("");
+            _apiClient.DefaultRequestHeaders.Add("Ocp-Apim-Subscription-Key", Constants.Constants.OcpApimSubscriptionKey);
+            try
+            {
+                var response = await _apiClient.GetAsync("v1/whoami/");
 
-            if (response.IsSuccessStatusCode)
-            {
-                var json = JArray.Parse(await response.Content.ReadAsStringAsync());
-                Console.WriteLine("\n\n");
-                Console.WriteLine(json);
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var json = JsonConvert.DeserializeObject(responseContent);
+                    Console.WriteLine("\n\n");
+                    Console.WriteLine(json);
+                }
             }
-            else
+            catch (Exception e)
             {
-                Console.WriteLine($"Error: {response.ReasonPhrase}");
+                Console.WriteLine(e);
             }
         }
     }
