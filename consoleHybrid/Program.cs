@@ -62,6 +62,7 @@ namespace ConsoleHybridWithPkce
             {
                 Console.WriteLine(e);
             }
+            Console.WriteLine("");
             Console.WriteLine("Press any key to close");
             Console.ReadKey();
         }
